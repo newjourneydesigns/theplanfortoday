@@ -1,0 +1,15 @@
+:root {
+  --color-background: #ffffff;
+  --color-primary: #202124;
+  --color-heading: #3e7cb1;
+  --color-cta: #f29f05;
+  --color-warning: #cf4520;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-background text-primary;
+}
