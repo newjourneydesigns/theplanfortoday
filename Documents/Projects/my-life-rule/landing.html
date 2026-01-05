@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seed | Formation is a slow work. Tend to your soul.</title>
+  <meta name="description" content="A spiritual formation app for prayer, scripture, and silence. Build your trellis for growth in God.">
+  <link rel="icon" type="image/png" href="/public/icon-192.png">
+  <link rel="apple-touch-icon" href="/public/icon-192.png" />
+  
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y1LTM5CCZY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-Y1LTM5CCZY');
+  </script>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #0a1412 0%, #122220 50%, #1a2f2c 100%);
+      color: #e8dcc8;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* Header */
+    header {
+      padding: 40px 0 80px;
+      text-align: center;
+      position: relative;
+    }
+
+    .logo-container {
+      display: inline-block;
+      width: 80px;
+      height: 160px;
+      margin-bottom: 20px;
+      filter: drop-shadow(0 4px 12px rgba(217, 136, 92, 0.3));
+    }
+
+    .logo-container svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    h1 {
+      font-size: 3.5rem;
+      font-weight: 700;
+      color: #b5c9bc;
+      margin-bottom: 10px;
+      letter-spacing: -1px;
+    }
+
+    .tagline {
+      font-size: 1rem;
+      color: #e8dcc8;
+      opacity: 0.7;
+      font-style: italic;
+      margin-bottom: 30px;
+    }
+
+    .subtitle {
+      font-size: 1.25rem;
+      color: #d9885c;
+      font-weight: 500;
+      margin-bottom: 40px;
+    }
+
+    .cta-button {
+      display: inline-block;
+      padding: 18px 48px;
+      background: linear-gradient(135deg, #d9885c 0%, #c97850 100%);
+      color: #122220;
+      text-decoration: none;
+      border-radius: 50px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      box-shadow: 0 8px 24px rgba(217, 136, 92, 0.3);
+    }
+
+    .cta-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(217, 136, 92, 0.4);
+    }
+
+    /* Features Section */
+    .features {
+      padding: 80px 0;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 2.5rem;
+      color: #b5c9bc;
+      margin-bottom: 60px;
+      font-weight: 700;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 30px;
+      margin-bottom: 60px;
+    }
+
+    .feature-card {
+      background: rgba(27, 62, 55, 0.3);
+      border: 1px solid rgba(181, 201, 188, 0.1);
+      border-radius: 20px;
+      padding: 40px 30px;
+      transition: transform 0.3s ease, border-color 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(217, 136, 92, 0.3);
+    }
+
+    .feature-icon {
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, #d9885c 0%, #c97850 100%);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      color: #122220;
+    }
+
+    .feature-card h3 {
+      font-size: 1.5rem;
+      color: #b5c9bc;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .feature-card p {
+      color: #e8dcc8;
+      opacity: 0.85;
+      line-height: 1.7;
+    }
+
+    /* About Section */
+    .about {
+      padding: 80px 0;
+      text-align: center;
+    }
+
+    .about-content {
+      max-width: 800px;
+      margin: 0 auto;
+      background: rgba(27, 62, 55, 0.3);
+      border: 1px solid rgba(181, 201, 188, 0.1);
+      border-radius: 20px;
+      padding: 50px 40px;
+      backdrop-filter: blur(10px);
+    }
+
+    .about-content p {
+      font-size: 1.2rem;
+      color: #e8dcc8;
+      margin-bottom: 20px;
+      line-height: 1.8;
+    }
+
+    .about-content .highlight {
+      color: #d9885c;
+      font-weight: 600;
+    }
+
+    /* Carousel Section */
+    .carousel {
+      padding: 80px 0;
+      overflow: hidden;
+    }
+
+    .carousel-container {
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .carousel-wrapper {
+      overflow: hidden;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    .carousel-track {
+      display: flex;
+      transition: transform 0.5s ease-in-out;
+    }
+
+    .carousel-slide {
+      min-width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(27, 62, 55, 0.3);
+    }
+
+    .carousel-slide img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .carousel-controls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 30px;
+    }
+
+    .carousel-btn {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: rgba(27, 62, 55, 0.6);
+      border: 1px solid rgba(181, 201, 188, 0.2);
+      color: #b5c9bc;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .carousel-btn:hover {
+      background: rgba(217, 136, 92, 0.3);
+      border-color: rgba(217, 136, 92, 0.5);
+      color: #d9885c;
+      transform: scale(1.1);
+    }
+
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .carousel-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(181, 201, 188, 0.3);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 1px solid rgba(181, 201, 188, 0.2);
+    }
+
+    .carousel-dot.active {
+      background: #d9885c;
+      border-color: #d9885c;
+      transform: scale(1.2);
+    }
+
+    /* Privacy Section */
+    .privacy {
+      padding: 80px 0;
+      background: rgba(10, 20, 18, 0.5);
+    }
+
+    .privacy-content {
+      max-width: 800px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .privacy-content h2 {
+      font-size: 2rem;
+      color: #b5c9bc;
+      margin-bottom: 30px;
+    }
+
+    .privacy-content p {
+      color: #e8dcc8;
+      opacity: 0.85;
+      margin-bottom: 15px;
+      line-height: 1.8;
+    }
+
+    /* Footer */
+    footer {
+      padding: 60px 0 40px;
+      text-align: center;
+      border-top: 1px solid rgba(181, 201, 188, 0.1);
+    }
+
+    footer p {
+      color: #e8dcc8;
+      opacity: 0.6;
+      margin-bottom: 15px;
+    }
+
+    footer a {
+      color: #d9885c;
+      text-decoration: none;
+      transition: opacity 0.3s ease;
+    }
+
+    footer a:hover {
+      opacity: 0.8;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2.5rem;
+      }
+
+      .section-title {
+        font-size: 2rem;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .logo-container {
+        width: 60px;
+        height: 120px;
+      }
+
+      .about-content, .privacy-content {
+        padding: 40px 30px;
+      }
+    }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .fade-in {
+      animation: fadeInUp 0.8s ease-out forwards;
+    }
+
+    .delay-1 { animation-delay: 0.1s; opacity: 0; }
+    .delay-2 { animation-delay: 0.2s; opacity: 0; }
+    .delay-3 { animation-delay: 0.3s; opacity: 0; }
+    .delay-4 { animation-delay: 0.4s; opacity: 0; }
+    .delay-5 { animation-delay: 0.5s; opacity: 0; }
+    .delay-6 { animation-delay: 0.6s; opacity: 0; }
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(10, 20, 18, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(181, 201, 188, 0.1);
+      padding: 15px 0;
+      z-index: 1000;
+      transition: all 0.3s ease;
+    }
+
+    nav .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    nav .nav-brand {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #b5c9bc;
+      text-decoration: none;
+    }
+
+    nav .nav-links {
+      display: flex;
+      gap: 30px;
+      align-items: center;
+    }
+
+    nav .nav-links a {
+      color: #e8dcc8;
+      text-decoration: none;
+      font-size: 1rem;
+      transition: color 0.3s ease;
+    }
+
+    nav .nav-links a:hover {
+      color: #d9885c;
+    }
+
+    /* Add padding to body content for fixed nav */
+    body {
+      padding-top: 60px;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    /* Heart Soil About Section */
+    .heart-soil-about {
+      padding: 80px 0;
+      background: rgba(10, 20, 18, 0.7);
+    }
+
+    .heart-soil-content {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .heart-soil-content h2 {
+      font-size: 2.5rem;
+      color: #b5c9bc;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+
+    .heart-soil-content p {
+      color: #e8dcc8;
+      opacity: 0.9;
+      margin-bottom: 20px;
+      line-height: 1.9;
+      font-size: 1.1rem;
+    }
+
+    .heart-soil-content p:last-child {
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav>
+    <div class="container">
+      <a href="#" class="nav-brand">Seed</a>
+      <div class="nav-links">
+        <a href="#about">About</a>
+        <a href="https://my-life-rule-app.web.app">Launch App</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="logo-container fade-in">
+        <svg viewBox="-35 -50 530 1050" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd" fill="#d9885c" d="M289.529,6.964 C192.732,105.507 8.561,569.377 252.134,823.656 C43.616,522.868 267.232,22.103 307.805,14.226 C376.452,0.898 495.989,352.153 489.103,474.426 C481.547,608.615 404.152,758.535 323.060,891.108 C256.736,999.538 30.187,684.799 2.547,473.633 C-30.920,217.947 274.159,-43.230 289.529,6.964 Z"/>
+        </svg>
+      </div>
+      <h1 class="fade-in delay-1">Seed</h1>
+      <p class="tagline fade-in delay-2">Formation is a slow work. Tend to your soul.</p>
+      <a href="https://my-life-rule-app.web.app" class="cta-button fade-in delay-3">Launch App</a>
+      <p class="fade-in delay-4" style="margin-top: 20px; color: #b5c9bc; font-size: 0.95rem;">Free for everyone</p>
+    </header>
+
+    <!-- Carousel -->
+    <section class="carousel">
+      <div class="carousel-container">
+        <h2 class="section-title" style="margin-bottom: 40px;">See It In Action</h2>
+        <div class="carousel-wrapper">
+          <div class="carousel-track" id="carouselTrack">
+            <div class="carousel-slide">
+              <img src="public/screenshots/screenshot1.png" alt="Prayer Topics Dashboard" onerror="this.parentElement.innerHTML='<div style=\'padding: 200px 0; text-align: center; color: #b5c9bc;\'>Screenshot 1<br><small style=\'opacity: 0.6;\'>Add screenshots to public/screenshots/</small></div>'">
+            </div>
+            <div class="carousel-slide">
+              <img src="public/screenshots/screenshot2.png" alt="Daily Examen" onerror="this.parentElement.innerHTML='<div style=\'padding: 200px 0; text-align: center; color: #b5c9bc;\'>Screenshot 2<br><small style=\'opacity: 0.6;\'>Add screenshots to public/screenshots/</small></div>'">
+            </div>
+            <div class="carousel-slide">
+              <img src="public/screenshots/screenshot3.png" alt="Lectio Divina" onerror="this.parentElement.innerHTML='<div style=\'padding: 200px 0; text-align: center; color: #b5c9bc;\'>Screenshot 3<br><small style=\'opacity: 0.6;\'>Add screenshots to public/screenshots/</small></div>'">
+            </div>
+            <div class="carousel-slide">
+              <img src="public/screenshots/screenshot4.png" alt="Scripture Memorization" onerror="this.parentElement.innerHTML='<div style=\'padding: 200px 0; text-align: center; color: #b5c9bc;\'>Screenshot 4<br><small style=\'opacity: 0.6;\'>Add screenshots to public/screenshots/</small></div>'">
+            </div>
+          </div>
+        </div>
+        <div class="carousel-controls">
+          <button class="carousel-btn" onclick="moveCarousel(-1)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <button class="carousel-btn" onclick="moveCarousel(1)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+        <div class="carousel-dots" id="carouselDots"></div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+      <h2 class="section-title">Cultivate Your Spiritual Life</h2>
+      <div class="features-grid">
+        <div class="feature-card fade-in delay-1">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </div>
+          <h3>Prayer Journal</h3>
+          <p>Create focused topics for different areas of your life. Add prayer requests, mark them as answered, and track God's faithfulness over time.</p>
+        </div>
+
+        <div class="feature-card fade-in delay-2">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/><line x1="17.5" y1="15" x2="9" y2="15"/></svg>
+          </div>
+          <h3>Lectio Divina</h3>
+          <p>Practice the ancient art of Divine Reading. Guided through four stages: Reading, Reflecting, Responding, and Resting in God's word.</p>
+        </div>
+
+        <div class="feature-card fade-in delay-3">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+          </div>
+          <h3>AI Scripture Assistant</h3>
+          <p>Find the perfect Bible verse for any situation. Get contextually relevant scripture suggestions based on your prayer topics and needs.</p>
+        </div>
+
+        <div class="feature-card fade-in delay-4">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          </div>
+          <h3>Scripture Memorization</h3>
+          <p>Hide God's word in your heart with interactive tools. Create meditation plans, practice with multiple modes, and listen with premium AI voices.</p>
+        </div>
+
+        <div class="feature-card fade-in delay-5">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+          </div>
+          <h3>Names of God</h3>
+          <p>Deepen your understanding of God's character through His Hebrew names. Each includes meaning, pronunciation, and supporting scripture.</p>
+        </div>
+
+        <div class="feature-card fade-in delay-6">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></svg>
+          </div>
+          <h3>Silence Timer</h3>
+          <p>Practice centering prayer and solitude. Fullscreen immersive experience with breathing animations and gentle chimes to guide your time with God.</p>
+        </div>
+
+        <div class="feature-card fade-in delay-1">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/><line x1="17.5" y1="15" x2="9" y2="15"/></svg>
+          </div>
+          <h3>Daily Examen</h3>
+          <p>End each day with a guided reflection on God's presence. Review moments of gratitude, consolation, and desolation using the Ignatian practice of daily examination.</p>
+        </div>
+
+        <div class="feature-card fade-in delay-2">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M9 13a4.5 4.5 0 0 0 3-4"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M12 13h4"/><path d="M12 18h6a2 2 0 0 1 2 2v1"/><path d="M12 8h8"/><path d="M16 8V5a2 2 0 0 1 2-2"/><circle cx="16" cy="13" r=".5"/><circle cx="18" cy="3" r=".5"/><circle cx="20" cy="21" r=".5"/><circle cx="20" cy="8" r=".5"/></svg>
+          </div>
+          <h3>Meditation Exercises</h3>
+          <p>Engage with scripture in multiple ways: Type verses from memory, speak them aloud with voice recognition, fill in the blanks, reveal words gradually, or listen with premium AI audio. Choose the practice that fits your season.</p>
+        </div>
+
+        <div class="feature-card fade-in delay-3">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>
+          </div>
+          <h3>Share Prayer Topics</h3>
+          <p>Invite others into your prayer life. Share any topic via a link so friends can view and pray alongside you. Stop sharing anytime with one click.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- About -->
+    <section class="about">
+      <div class="about-content fade-in">
+        <h2 class="section-title">A Trellis for Your Soul</h2>
+        <p>
+          Just as a trellis provides structure for a plant to grow, <span class="highlight">Seed</span> offers a framework for spiritual formation. This is a disciple's way—<span class="highlight">practicing the ways of Jesus so we can experience the life of Jesus</span>.
+        </p>
+        <p>
+          Growth doesn't happen overnight. It requires <span class="highlight">patience, intentionality, and consistent tending</span>. Whether you're deepening your prayer life, meditating on scripture, or practicing silence, Seed helps you build sustainable rhythms as you <span class="highlight">partner with the Holy Spirit</span> in the work of forming you into the image of Jesus.
+        </p>
+        <p>
+          <span class="highlight">Seed is free for everyone</span>—a gift to support your journey of spiritual formation.
+        </p>
+        <p>
+          Start small. Tend faithfully. Watch what God grows.
+        </p>
+      </div>
+    </section>
+
+    <!-- Privacy -->
+    <section class="privacy">
+      <div class="privacy-content fade-in">
+        <h2>Your Sacred Space is Protected</h2>
+        <p>
+          <strong>Your prayers are personal.</strong> All data collected within Seed is securely stored in your private account and is never distributed, sold, or shared with third parties.
+        </p>
+        <p>
+          We use industry-standard security practices to protect your spiritual journey and personal information.
+        </p>
+      </div>
+    </section>
+
+    <!-- About My Heart Soil -->
+    <section class="heart-soil-about" id="about">
+      <div class="heart-soil-content fade-in">
+        <h2>About My Heart Soil</h2>
+        <p>
+          I created My Heart Soil as a pastor who is learning, alongside others, what it means to faithfully follow Jesus. With their help, we made this to help you follow Him too.
+        </p>
+        <p>
+          Over the years, I've walked with people who sincerely want to grow as disciples but often feel stretched, distracted, or unsure how real transformation happens. I've experienced that same tension in my own life. It is easy to focus on doing the right things while overlooking the condition of our hearts.
+        </p>
+        <p>
+          Jesus often described growth in quiet, ordinary ways. In Mark 4, He speaks of the heart as soil where the Word is received and cultivated. In John 15, He invites His disciples to abide in Him so that fruit can grow naturally over time.
+        </p>
+        <p>
+          To abide means to remain with Jesus. Like a branch connected to the vine, we do not strain to produce fruit. We stay connected. Life flows from Jesus into us through prayer, Scripture, trust, and obedience. Over time, His life produces fruit that we could never manufacture on our own.
+        </p>
+        <p>
+          My Heart Soil exists to help followers of Jesus slow down, stay present with Him, and pay attention to what is happening beneath the surface. The practices here are simple and rooted in Scripture, creating space to listen, reflect, and respond to Jesus.
+        </p>
+        <p>
+          This space is built on trust. Trusting Jesus to do His work in us. We are not after more information, but transformation. Not more seed, but better soil.
+        </p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <p>&copy; 2025 Seed. All rights reserved.</p>
+      <p>Created for the betterment of your soul by <a href="https://newjourneydesigns.co" target="_blank" rel="noopener noreferrer">NewJourneyDesigns.co</a></p>
+      <p>
+        <a href="mailto:newjourneydesign.co@gmail.com">Contact</a> • 
+        <a href="https://my-life-rule-app.web.app">Launch App</a>
+      </p>
+    </footer>
+  </div>
+
+  <script>
+    // Carousel functionality
+    let currentSlide = 0;
+    const track = document.getElementById('carouselTrack');
+    const slides = document.querySelectorAll('.carousel-slide');
+    const dotsContainer = document.getElementById('carouselDots');
+    
+    // Create dots
+    slides.forEach((_, index) => {
+      const dot = document.createElement('div');
+      dot.className = 'carousel-dot';
+      if (index === 0) dot.classList.add('active');
+      dot.onclick = () => goToSlide(index);
+      dotsContainer.appendChild(dot);
+    });
+    
+    function moveCarousel(direction) {
+      currentSlide += direction;
+      if (currentSlide < 0) currentSlide = slides.length - 1;
+      if (currentSlide >= slides.length) currentSlide = 0;
+      updateCarousel();
+    }
+    
+    function goToSlide(index) {
+      currentSlide = index;
+      updateCarousel();
+    }
+    
+    function updateCarousel() {
+      track.style.transform = `translateX(-${currentSlide * 100}%)`;
+      document.querySelectorAll('.carousel-dot').forEach((dot, index) => {
+        dot.classList.toggle('active', index === currentSlide);
+      });
+    }
+    
+    // Auto-advance carousel every 5 seconds
+    setInterval(() => moveCarousel(1), 5000);
+
+    // Intersection Observer for fade-in animations
+    const observerOptions = {
+      threshold: 0.1,
+      rootMargin: '0px 0px -50px 0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.style.opacity = '1';
+          entry.target.style.transform = 'translateY(0)';
+        }
+      });
+    }, observerOptions);
+
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>
