@@ -739,9 +739,6 @@ export const VerseMemorization: React.FC<VerseMemorizationProps> = ({ user, onUp
       (targetMode !== 'REVEAL' || resumeRevealType === targetRevealType);
 
     if (canResume) {
-      if (targetMode === 'LISTEN' && currentAudioText !== verseText) {
-        fetchAudio(verseText);
-      }
       setStep('ACTIVE');
       if (targetMode === 'TYPE') setTimeout(() => inputRef.current?.focus(), 100);
       return;

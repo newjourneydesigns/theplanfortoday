@@ -7,6 +7,7 @@ interface RuleOfLifeProps {
   user: UserProfile;
   onUpdateUser: (user: UserProfile) => void;
   onSaveJournalEntry?: (entry: JournalEntry) => void;
+  onDeleteJournalEntry?: (id: string) => Promise<void>;
   onClose: () => void;
   journalEntries?: JournalEntry[];
 }
