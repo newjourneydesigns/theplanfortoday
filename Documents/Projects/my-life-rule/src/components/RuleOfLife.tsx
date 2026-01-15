@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { UserProfile, JournalEntry, RuleOfLifePlan, RulePractice, ManualCompletion, PracticeCategory } from '../types';
 import { Button, Icons, Input, Modal, Textarea } from './Shared';
 import { CANONICAL_PRACTICES, STARTERS, StarterPreset } from '../constants/practices';
@@ -43,7 +44,8 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
     practice: RulePractice | null;
     reflection: string;
     date: number;
-  }>({ isOpen: false, practice: null, reflection: '', date: Date.now() });
+    alsoAddToGratitudeList: boolean;
+  }>({ isOpen: false, practice: null, reflection: '', date: Date.now(), alsoAddToGratitudeList: false });
   const [uncheckModal, setUncheckModal] = useState<{
     isOpen: boolean;
     practice: RulePractice | null;
@@ -55,6 +57,23 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
   // Weekly reflection modal
   const [weeklyReflectionModal, setWeeklyReflectionModal] = useState(false);
   const [weeklyReflectionText, setWeeklyReflectionText] = useState('');
+
+  // Week view UI state (persisted)
+  const [expandedWeekDayKeys, setExpandedWeekDayKeys] = useState<string[]>([]);
+  const [expandedWeekKey, setExpandedWeekKey] = useState<number | null>(null);
+
+  // Week view practice details UI state (non-persisted)
+  const [expandedWeekPracticeDetailsDayKeys, setExpandedWeekPracticeDetailsDayKeys] = useState<string[]>([]);
+
+  // Monthly practices UI state (non-persisted)
+  const [expandedMonthlyPracticeIds, setExpandedMonthlyPracticeIds] = useState<string[]>([]);
+
+  const [monthlyOccurrenceEditModal, setMonthlyOccurrenceEditModal] = useState<{
+    isOpen: boolean;
+    practice: RulePractice | null;
+    completionIndex: number | null;
+  }>({ isOpen: false, practice: null, completionIndex: null });
+  const [monthlyOccurrenceEditText, setMonthlyOccurrenceEditText] = useState('');
   
   // Historical reflection editing
   const [editingHistoricalWeek, setEditingHistoricalWeek] = useState<number | null>(null); // index of week being edited
@@ -82,10 +101,26 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
     scheduledDays: [],
     linkedAppPractice: undefined,
   });
+
+  // Keep local rule state in sync with the persisted user profile when the rule is cleared elsewhere.
+  useEffect(() => {
+    if (!user.ruleOfLife && rule) {
+      setRule(null);
+    }
+  }, [user.ruleOfLife, rule]);
   
   // Sync rule changes to user profile
   useEffect(() => {
-    if (rule && JSON.stringify(rule) !== JSON.stringify(user.ruleOfLife)) {
+    // Persist deletions as well as edits.
+    if (!rule) {
+      if (user.ruleOfLife) {
+        console.log('Clearing Rule of Life from profile:', { userId: user.uid });
+        onUpdateUser({ ...user, ruleOfLife: null });
+      }
+      return;
+    }
+
+    if (JSON.stringify(rule) !== JSON.stringify(user.ruleOfLife)) {
       console.log('Saving Rule of Life changes:', { rule, userId: user.uid });
       onUpdateUser({ ...user, ruleOfLife: rule });
     }
@@ -147,13 +182,13 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
           reflection: rule.weeklyReflection || '',
           practicesSummary
         };
-        
+
         // Add to history (newest first)
         const updatedHistory = [historicalEntry, ...(rule.weeklyHistory || [])];
-        
+
         // Keep only last 52 weeks
         const trimmedHistory = updatedHistory.slice(0, 52);
-        
+
         setRule({
           ...rule,
           currentWeekStart: currentWeekStartTimestamp,
@@ -175,6 +210,62 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
   }, [view]);
+
+  // Restore persisted expanded/collapsed days for the current week
+  useEffect(() => {
+    if (view !== 'WEEK' || !rule) return;
+    if (typeof window === 'undefined') return;
+
+    const { weekStart } = getWeekBoundaries(new Date(), rule.weekStartDay);
+    const weekKey = weekStart.getTime();
+    if (expandedWeekKey === weekKey) return;
+
+    const storageKey = `rol_week_expanded:${user.uid || 'anon'}:${weekKey}`;
+    const weekDates = getCurrentWeekDates();
+    const validKeys = new Set(weekDates.map(d => d.toDateString()));
+
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { expanded?: string[] };
+        const expanded = (parsed.expanded || []).filter(k => validKeys.has(k));
+        if (expanded.length > 0) {
+          setExpandedWeekDayKeys(expanded);
+          setExpandedWeekKey(weekKey);
+          return;
+        }
+      }
+    } catch {
+      // Ignore invalid localStorage data
+    }
+
+    // Default: expand today (if it falls in this week), otherwise first day
+    const todayKey = new Date().toDateString();
+    const defaultExpanded = validKeys.has(todayKey) ? [todayKey] : (weekDates[0] ? [weekDates[0].toDateString()] : []);
+    setExpandedWeekDayKeys(defaultExpanded);
+    setExpandedWeekKey(weekKey);
+  }, [view, rule, user.uid, expandedWeekKey]);
+
+  // Persist expanded/collapsed days for the current week
+  useEffect(() => {
+    if (view !== 'WEEK' || !rule) return;
+    if (typeof window === 'undefined') return;
+
+    const { weekStart } = getWeekBoundaries(new Date(), rule.weekStartDay);
+    const weekKey = weekStart.getTime();
+    const storageKey = `rol_week_expanded:${user.uid || 'anon'}:${weekKey}`;
+
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify({ expanded: expandedWeekDayKeys }));
+    } catch {
+      // Ignore storage failures (private mode, quota, etc.)
+    }
+  }, [expandedWeekDayKeys, view, rule, user.uid]);
+
+  // If a day is collapsed, also hide its practice details
+  useEffect(() => {
+    setExpandedWeekPracticeDetailsDayKeys(prev => prev.filter(k => expandedWeekDayKeys.includes(k)));
+  }, [expandedWeekDayKeys]);
   
   // Scroll to top when any modal opens
   useLayoutEffect(() => {
@@ -201,6 +292,14 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
     weekEnd.setHours(23, 59, 59, 999);
     
     return { weekStart, weekEnd };
+  };
+
+  const getMonthBoundaries = (date: Date) => {
+    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
+    return { monthStart, monthEnd };
   };
   
   // Get current week dates
@@ -278,16 +377,51 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
         weekDates.push(new Date(d));
       }
       return weekDates.filter(date => isPracticeEngaged(practice, date)).length;
-    } else {
-      // Monthly
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const monthDates: Date[] = [];
-      for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
-        monthDates.push(new Date(d));
-      }
-      return monthDates.filter(date => isPracticeEngaged(practice, date)).length;
     }
+
+    // Monthly
+    const { monthStart, monthEnd } = getMonthBoundaries(now);
+
+    // Count manual completions as occurrences (supports targetPerMonth > 1)
+    const manualCount = (rule?.manualCompletions || []).filter(c => {
+      if (c.practiceId !== practice.id) return false;
+      return c.date >= monthStart.getTime() && c.date <= monthEnd.getTime();
+    }).length;
+
+    // Linked app practices can only be inferred from journal entries; count distinct engaged days.
+    let linkedCount = 0;
+    if (practice.linkedAppPractice && journalEntries.length > 0) {
+      const engagedDayKeys = new Set<string>();
+      for (const entry of journalEntries) {
+        if (entry.date < monthStart.getTime() || entry.date > monthEnd.getTime()) continue;
+        let matches = false;
+        switch (practice.linkedAppPractice) {
+          case 'LECTIO':
+            matches = !!entry.lectioPassage;
+            break;
+          case 'SILENCE_TIMER':
+            matches = !!entry.silencePractice;
+            break;
+          case 'GRATITUDE_LIST':
+            matches = !!entry.gratitudePractice;
+            break;
+          case 'MEMORIZE':
+            matches = !!entry.memorizationCompletion;
+            break;
+          case 'DAILY_EXAMEN':
+            matches = !!entry.review;
+            break;
+          default:
+            matches = false;
+        }
+        if (matches) {
+          engagedDayKeys.add(new Date(entry.date).toDateString());
+        }
+      }
+      linkedCount = engagedDayKeys.size;
+    }
+
+    return manualCount + linkedCount;
   };
   
   // Get practice display name
@@ -343,11 +477,19 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
   
   // Handle practice engagement
   const handleEngagePractice = (practice: RulePractice, date: Date) => {
-    // Check if already engaged
-    if (isPracticeEngaged(practice, date)) {
-      return;
+    // For monthly practices (especially with targetPerMonth > 1), allow multiple occurrences.
+    // Only block if the monthly target is already reached.
+    if (practice.frequency === 'MONTHLY') {
+      const target = practice.targetPerMonth || 1;
+      const count = getEngagementCount(practice);
+      if (count >= target) return;
+    } else {
+      // Check if already engaged (daily/weekly)
+      if (isPracticeEngaged(practice, date)) {
+        return;
+      }
     }
-    
+
     // Navigate to reflection page
     setEngagementModal({ isOpen: false, practice, date: date.getTime() });
     setSelectedPrompt(getNextPrompt(practice));
@@ -411,6 +553,8 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
         practice: engagementModal.practice,
         reflection: engagementReflection.trim(),
         date: engagementModal.date,
+        // Only relevant for Gratitude reflections; checkbox is hidden otherwise.
+        alsoAddToGratitudeList: false,
       });
     }
     
@@ -452,6 +596,47 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
     setEditingHistoricalWeek(null);
     setHistoricalReflectionText('');
   };
+
+  const saveMonthlyOccurrenceEdit = () => {
+    if (!rule || !monthlyOccurrenceEditModal.practice) return;
+    if (monthlyOccurrenceEditModal.completionIndex === null) return;
+    const idx = monthlyOccurrenceEditModal.completionIndex;
+    if (idx < 0 || idx >= rule.manualCompletions.length) return;
+
+    const nextReflection = monthlyOccurrenceEditText.trim();
+    const updatedCompletions = [...rule.manualCompletions];
+    updatedCompletions[idx] = {
+      ...updatedCompletions[idx],
+      ...(nextReflection ? { reflection: nextReflection } : { reflection: undefined }),
+    };
+
+    setRule({
+      ...rule,
+      manualCompletions: updatedCompletions,
+    });
+
+    setMonthlyOccurrenceEditModal({ isOpen: false, practice: null, completionIndex: null });
+    setMonthlyOccurrenceEditText('');
+  };
+
+  const deleteMonthlyOccurrence = (completionIndex: number) => {
+    if (!rule) return;
+    if (completionIndex < 0 || completionIndex >= rule.manualCompletions.length) return;
+
+    if (!confirm('Delete this monthly entry?')) return;
+
+    const updatedCompletions = rule.manualCompletions.filter((_, i) => i !== completionIndex);
+    setRule({
+      ...rule,
+      manualCompletions: updatedCompletions,
+    });
+
+    // If we're editing this same occurrence, close the modal.
+    if (monthlyOccurrenceEditModal.isOpen && monthlyOccurrenceEditModal.completionIndex === completionIndex) {
+      setMonthlyOccurrenceEditModal({ isOpen: false, practice: null, completionIndex: null });
+      setMonthlyOccurrenceEditText('');
+    }
+  };
   
   // Delete historical week
   const deleteHistoricalWeek = (index: number) => {
@@ -468,7 +653,7 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
   // Save practice reflection to journal
   const savePracticeReflectionToJournal = () => {
     if (!journalPromptModal.practice || !onSaveJournalEntry) {
-      setJournalPromptModal({ isOpen: false, practice: null, reflection: '', date: Date.now() });
+      setJournalPromptModal({ isOpen: false, practice: null, reflection: '', date: Date.now(), alsoAddToGratitudeList: false });
       return;
     }
     
@@ -476,6 +661,9 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
     const existingEntry = journalEntries?.find(e => new Date(e.date).toDateString() === dateStr);
     
     const practiceName = getPracticeName(journalPromptModal.practice);
+    const allowGratitudeSync =
+      journalPromptModal.practice.category === 'GRATITUDE' ||
+      journalPromptModal.practice.linkedAppPractice === 'GRATITUDE_LIST';
     console.log('Saving practice reflection:', {
       practiceId: journalPromptModal.practice.id,
       practiceCategory: journalPromptModal.practice.category,
@@ -492,30 +680,38 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
     
     if (existingEntry) {
       // Update existing entry
-      const updated: JournalEntry = {
-        ...existingEntry,
-        rulePracticeReflections: [
-          ...(existingEntry.rulePracticeReflections || []),
-          practiceReflectionEntry,
-        ],
+      const shouldAddGratitude = allowGratitudeSync && journalPromptModal.alsoAddToGratitudeList;
+      
+      // Create a NEW separate entry for this reflection instead of appending to existing
+      const newEntry: JournalEntry = {
+        id: Math.random().toString(36).substr(2, 9),
+        date: journalPromptModal.date,
+        gratitude: shouldAddGratitude ? journalPromptModal.reflection : '',
+        review: '',
+        repentance: '',
+        hope: '',
+        aiPrayer: '',
+        ...(shouldAddGratitude ? { gratitudePractice: journalPromptModal.reflection } : {}),
+        rulePracticeReflections: [practiceReflectionEntry],
       };
-      onSaveJournalEntry(updated);
+      onSaveJournalEntry(newEntry);
     } else {
       // Create new entry
       const newEntry: JournalEntry = {
         id: Math.random().toString(36).substr(2, 9),
         date: journalPromptModal.date,
-        gratitude: '',
+        gratitude: (allowGratitudeSync && journalPromptModal.alsoAddToGratitudeList) ? journalPromptModal.reflection : '',
         review: '',
         repentance: '',
         hope: '',
         aiPrayer: '',
+        ...((allowGratitudeSync && journalPromptModal.alsoAddToGratitudeList) ? { gratitudePractice: journalPromptModal.reflection } : {}),
         rulePracticeReflections: [practiceReflectionEntry],
       };
       onSaveJournalEntry(newEntry);
     }
     
-    setJournalPromptModal({ isOpen: false, practice: null, reflection: '', date: Date.now() });
+    setJournalPromptModal({ isOpen: false, practice: null, reflection: '', date: Date.now(), alsoAddToGratitudeList: false });
   };
   
   // Confirm uncheck with optional journal entry deletion
@@ -574,6 +770,16 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
   // Add new practice
   const handleAddPractice = () => {
     if (!rule) return;
+
+    if (practiceForm.frequency === 'WEEKLY') {
+      const selectedDaysCount = practiceForm.scheduledDays.length;
+      if (selectedDaysCount !== practiceForm.target) {
+        window.alert(
+          `Please select ${practiceForm.target} day${practiceForm.target === 1 ? '' : 's'} of the week before saving this weekly practice.`
+        );
+        return;
+      }
+    }
     
     const newPractice: RulePractice = {
       id: Math.random().toString(36).substr(2, 9),
@@ -603,6 +809,16 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
   // Edit existing practice
   const handleSavePracticeEdit = () => {
     if (!rule || !editingPractice) return;
+
+    if (practiceForm.frequency === 'WEEKLY') {
+      const selectedDaysCount = practiceForm.scheduledDays.length;
+      if (selectedDaysCount !== practiceForm.target) {
+        window.alert(
+          `Please select ${practiceForm.target} day${practiceForm.target === 1 ? '' : 's'} of the week before saving this weekly practice.`
+        );
+        return;
+      }
+    }
     
     console.log('Saving practice edit:', {
       editingPractice,
@@ -802,117 +1018,338 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
       console.log('Prayer practice:', prayerPractice);
     }
     
+    const expandedSet = new Set(expandedWeekDayKeys);
+    const expandedPracticeDetailsSet = new Set(expandedWeekPracticeDetailsDayKeys);
+
+    const toggleExpandedDay = (dayKey: string) => {
+      setExpandedWeekDayKeys(prev => {
+        if (prev.includes(dayKey)) return prev.filter(k => k !== dayKey);
+        return [...prev, dayKey];
+      });
+    };
+
+    const togglePracticeDetailsForDay = (dayKey: string) => {
+      setExpandedWeekPracticeDetailsDayKeys(prev => {
+        if (prev.includes(dayKey)) return prev.filter(k => k !== dayKey);
+        return [...prev, dayKey];
+      });
+    };
+
+    const toggleMonthlyPracticeExpanded = (practiceId: string) => {
+      setExpandedMonthlyPracticeIds(prev => {
+        if (prev.includes(practiceId)) return prev.filter(id => id !== practiceId);
+        return [...prev, practiceId];
+      });
+    };
+
+    const getPracticeFrequencyText = (practice: RulePractice) => {
+      if (practice.frequency === 'DAILY') {
+        const targetPerWeek = practice.targetPerWeek || 7;
+        // Historically we store daily targets as a per-week count (e.g., 14 = 2x/day).
+        if (targetPerWeek >= 7 && targetPerWeek % 7 === 0) {
+          const perDay = targetPerWeek / 7;
+          return perDay === 1 ? 'Daily' : `${perDay}x per day`;
+        }
+        return targetPerWeek === 7 ? 'Daily' : `Daily (${targetPerWeek}x/week)`;
+      }
+
+      if (practice.frequency === 'WEEKLY') {
+        const target = practice.targetPerWeek || 1;
+        const days = practice.scheduledDays || [];
+        if (days.length > 0) {
+          const shortDayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          return days.map(d => shortDayNames[d]).join(', ');
+        }
+        return `${target}x per week`;
+      }
+
+      const target = practice.targetPerMonth || 1;
+      return `${target}x per month`;
+    };
+
+    const getDayCompletionSummary = (date: Date) => {
+      const dayOfWeek = (date.getDay() + 7) % 7;
+      const practicesForDay = [
+        ...dailyPractices,
+        ...weeklyPractices.filter(p => p.scheduledDays?.includes(dayOfWeek)),
+      ];
+
+      let total = 0;
+      let complete = 0;
+
+      for (const practice of practicesForDay) {
+        const completionCount = getPracticeCompletionCount(practice, date);
+        if (practice.frequency === 'DAILY') {
+          // Daily practices are tracked as a single engagement per day.
+          total += 1;
+          complete += completionCount > 0 ? 1 : 0;
+        } else {
+          total += 1;
+          complete += completionCount > 0 ? 1 : 0;
+        }
+      }
+
+      return { total, complete };
+    };
+
+    const renderPracticeChips = (date: Date, practicesForDay: RulePractice[]) => {
+      if (practicesForDay.length === 0) {
+        return <span className="text-oatmeal/40 text-sm italic">No practices scheduled</span>;
+      }
+
+      return (
+        <div className="flex flex-wrap gap-1.5 sm:gap-2 items-start">
+          {practicesForDay.map(practice => {
+            const isToday = date.toDateString() === new Date().toDateString();
+            const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
+            const completionCount = getPracticeCompletionCount(practice, date);
+
+            // For daily/weekly practices, allow a single engagement per day.
+            // For monthly practices, completion count can exceed 1 but day-level still shows engaged/not.
+            const isEngaged = completionCount > 0;
+            return (
+              <button
+                key={practice.id}
+                onClick={() => isEngaged
+                  ? handleUncheckPractice(practice, date)
+                  : handleEngagePractice(practice, date)
+                }
+                className={`px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-all active:scale-95 ${
+                  isEngaged
+                    ? 'bg-flame/30 text-flame border border-flame/50 font-medium cursor-pointer hover:bg-flame/40'
+                    : isToday
+                    ? 'bg-blue-fantastic text-palladian border border-palladian/30 hover:border-flame/50 font-medium'
+                    : isPast
+                    ? 'bg-blue-abyssal/50 text-oatmeal/50 border border-oatmeal/20'
+                    : 'bg-blue-fantastic/70 text-oatmeal border border-oatmeal/30 hover:border-oatmeal/50'
+                }`}
+              >
+                {isEngaged && <Icons.Check size={12} className="inline mr-1" />}
+                {getPracticeName(practice)}
+              </button>
+            );
+          })}
+        </div>
+      );
+    };
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-blue-abyssal to-blue-fantastic px-3 sm:px-6 lg:px-12 py-4 sm:py-8 animate-in slide-in-from-bottom duration-500 pb-24">
         <div className="max-w-6xl mx-auto space-y-4 sm:space-y-8">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-palladian">Rule of Life</h2>
-              <p className="text-oatmeal/70 text-xs sm:text-sm">Week of {weekDates[0].toLocaleDateString()}</p>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <Button variant="ghost" size="sm" onClick={() => setView('HISTORY')} className="flex-1 sm:flex-initial" title="View practice history">
-                <Icons.Calendar size={16} className="mr-2" />
-                <span>History</span>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setView('MANAGE')} className="flex-1 sm:flex-initial" title="Manage practices">
-                <Icons.Settings size={16} className="mr-2" />
-                <span>Manage</span>
-              </Button>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-blue-fantastic/50 rounded-lg transition-colors"
-                title="Close Rule of Life"
-              >
-                <Icons.X size={20} className="text-oatmeal" />
-              </button>
+          <div className="sticky top-0 z-20 -mx-3 sm:-mx-6 lg:-mx-12 px-3 sm:px-6 lg:px-12 py-3 bg-blue-abyssal/80 backdrop-blur-sm border-b border-oatmeal/10">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-palladian">Rule of Life</h2>
+                <p className="text-oatmeal/70 text-xs sm:text-sm">Week of {weekDates[0].toLocaleDateString()}</p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="ghost" size="sm" onClick={() => setView('HISTORY')} className="flex-1 sm:flex-initial" title="View practice history">
+                  <Icons.Calendar size={16} className="mr-2" />
+                  <span>History</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setView('MANAGE')} className="flex-1 sm:flex-initial" title="Manage practices">
+                  <Icons.Settings size={16} className="mr-2" />
+                  <span>Manage</span>
+                </Button>
+              </div>
             </div>
           </div>
-          
-          {/* Week Grid */}
-          <div className="bg-blue-fantastic/50 border border-oatmeal/10 rounded-lg sm:rounded-xl p-3 sm:p-6 space-y-3 sm:space-y-4">
+
+          {/* Week (Accordion) */}
+          <div className="bg-blue-fantastic/50 border border-oatmeal/10 rounded-lg sm:rounded-xl overflow-hidden">
             {weekDates.map((date, dayIndex) => {
+              const dayKey = date.toDateString();
+              const isExpanded = expandedSet.has(dayKey);
+              const isDetailsExpanded = expandedPracticeDetailsSet.has(dayKey);
               const dayOfWeek = (date.getDay() + 7) % 7;
               const practicesForDay = [
                 ...dailyPractices,
                 ...weeklyPractices.filter(p => p.scheduledDays?.includes(dayOfWeek)),
               ];
-              
+
+              const corePracticesForDay = practicesForDay.filter(p => p.category !== 'CUSTOM');
+              const personalPracticesForDay = practicesForDay.filter(p => p.category === 'CUSTOM');
+
+              const isToday = date.toDateString() === new Date().toDateString();
+              const { complete, total } = getDayCompletionSummary(date);
+
               return (
-                <div key={date.toDateString()} className="space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
-                    <div className="flex-shrink-0 w-full sm:w-32">
-                      <div className="text-sm sm:text-base font-semibold text-palladian">{orderedDays[dayIndex]}</div>
-                      <div className="text-xs text-oatmeal/70">{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                <div key={dayKey} className={dayIndex === 0 ? '' : 'border-t border-oatmeal/10'}>
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandedDay(dayKey)}
+                    className="w-full text-left px-3 sm:px-6 py-3 sm:py-4 hover:bg-blue-abyssal/20 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className={`text-sm sm:text-base font-semibold ${isToday ? 'text-flame' : 'text-palladian'}`}>
+                            {orderedDays[dayIndex]}
+                          </div>
+                          {isToday && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-flame/20 text-flame border border-flame/30">
+                              Today
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-oatmeal/70">
+                          {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="text-xs text-oatmeal/70">
+                          {total === 0 ? '—' : `${complete}/${total} complete`}
+                        </div>
+                        {isExpanded ? (
+                          <Icons.Up size={16} className="text-oatmeal/70" />
+                        ) : (
+                          <Icons.Down size={16} className="text-oatmeal/70" />
+                        )}
+                      </div>
                     </div>
-                    
-                    <div className="flex-1 flex flex-wrap gap-1.5 sm:gap-2 items-start">
+                  </button>
+
+                  {isExpanded && (
+                    <div className="px-3 sm:px-6 pb-4 sm:pb-6">
                       {practicesForDay.length === 0 ? (
-                        <span className="text-oatmeal/40 text-sm italic">No practices scheduled</span>
+                        <div className="pt-1">
+                          {renderPracticeChips(date, [])}
+                        </div>
                       ) : (
-                        practicesForDay.flatMap(practice => {
-                          const isToday = date.toDateString() === new Date().toDateString();
-                          const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
-                          const completionCount = getPracticeCompletionCount(practice, date);
-                          
-                          // For daily practices with target > 1, show multiple buttons
-                          if (practice.frequency === 'DAILY') {
-                            const target = practice.targetPerWeek || 1;
-                            return Array.from({ length: target }, (_, index) => {
-                              const isThisInstanceEngaged = index < completionCount;
-                              
-                              return (
-                                <button
-                                  key={`${practice.id}-${index}`}
-                                  onClick={() => isThisInstanceEngaged 
-                                    ? handleUncheckPractice(practice, date)
-                                    : handleEngagePractice(practice, date)
-                                  }
-                                  className={`px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-all active:scale-95 ${
-                                    isThisInstanceEngaged
-                                      ? 'bg-flame/30 text-flame border border-flame/50 font-medium cursor-pointer hover:bg-flame/40'
-                                      : isToday
-                                      ? 'bg-blue-fantastic text-palladian border border-palladian/30 hover:border-flame/50 font-medium'
-                                      : isPast
-                                      ? 'bg-blue-abyssal/50 text-oatmeal/50 border border-oatmeal/20'
-                                      : 'bg-blue-fantastic/70 text-oatmeal border border-oatmeal/30 hover:border-oatmeal/50'
-                                  }`}
-                                >
-                                  {isThisInstanceEngaged && <Icons.Check size={12} className="inline mr-1" />}
-                                  {getPracticeName(practice)}
-                                </button>
-                              );
-                            });
-                          }
-                          
-                          // For weekly/monthly practices, show single button
-                          const isEngaged = completionCount > 0;
-                          return (
-                            <button
-                              key={practice.id}
-                              onClick={() => isEngaged 
-                                ? handleUncheckPractice(practice, date)
-                                : handleEngagePractice(practice, date)
-                              }
-                              className={`px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-all active:scale-95 ${
-                                isEngaged
-                                  ? 'bg-flame/30 text-flame border border-flame/50 font-medium cursor-pointer hover:bg-flame/40'
-                                  : isToday
-                                  ? 'bg-blue-fantastic text-palladian border border-palladian/30 hover:border-flame/50 font-medium'
-                                  : isPast
-                                  ? 'bg-blue-abyssal/50 text-oatmeal/50 border border-oatmeal/20'
-                                  : 'bg-blue-fantastic/70 text-oatmeal border border-oatmeal/30 hover:border-oatmeal/50'
-                              }`}
+                        <div className="space-y-4">
+                          {corePracticesForDay.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-xs font-semibold text-oatmeal/70 uppercase tracking-wide">Core Practices</div>
+                              {renderPracticeChips(date, corePracticesForDay)}
+                            </div>
+                          )}
+
+                          {personalPracticesForDay.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-xs font-semibold text-oatmeal/70 uppercase tracking-wide">Custom Practices</div>
+                              {renderPracticeChips(date, personalPracticesForDay)}
+                            </div>
+                          )}
+
+                          <div className="pt-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => togglePracticeDetailsForDay(dayKey)}
+                              className="w-full sm:w-auto justify-center sm:justify-start"
                             >
-                              {isEngaged && <Icons.Check size={12} className="inline mr-1" />}
-                              {getPracticeName(practice)}
-                            </button>
-                          );
-                        })
+                              <Icons.Info size={16} className="mr-2" />
+                              <span>{isDetailsExpanded ? 'Hide Practice Details' : 'View Practice Details'}</span>
+                            </Button>
+
+                            {isDetailsExpanded && (
+                              <div className="mt-3 bg-blue-abyssal/30 border border-oatmeal/10 rounded-lg p-3 space-y-3">
+                                {practicesForDay.map(practice => (
+                                  <div key={`details-${practice.id}`} className="bg-blue-fantastic/30 border border-oatmeal/10 rounded-lg p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-palladian break-words">
+                                          {getPracticeName(practice)}
+                                        </div>
+                                        <div className="text-xs text-flame mt-0.5">
+                                          {getPracticeFrequencyText(practice)}
+                                        </div>
+                                      </div>
+                                      {practice.linkedAppPractice && (
+                                        <div className="flex-shrink-0">
+                                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-palladian/20 rounded text-[10px] text-palladian">
+                                            <Icons.Link size={12} />
+                                            Linked
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="text-sm text-oatmeal/80 leading-relaxed mt-2">
+                                      {renderTextWithUrls(practice.description)}
+                                    </div>
+
+                                    {(() => {
+                                      const dayStart = new Date(date);
+                                      dayStart.setHours(0, 0, 0, 0);
+                                      const dayEnd = new Date(date);
+                                      dayEnd.setHours(23, 59, 59, 999);
+                                      const dayStartTs = dayStart.getTime();
+                                      const dayEndTs = dayEnd.getTime();
+
+                                      const matching = (journalEntries || [])
+                                        .filter(e => e.date >= dayStartTs && e.date <= dayEndTs)
+                                        .filter(e => (e.rulePracticeReflections || []).some(r => r.practiceId === practice.id))
+                                        .map(e => {
+                                          const refs = (e.rulePracticeReflections || []).filter(r => r.practiceId === practice.id);
+                                          return refs.map(r => ({
+                                            entryId: e.id,
+                                            entryDate: e.date,
+                                            practiceId: r.practiceId,
+                                            practiceName: r.practiceName,
+                                            reflection: r.reflection,
+                                            timestamp: r.timestamp,
+                                          }));
+                                        })
+                                        .flat()
+                                        .sort((a, b) => (b.timestamp || b.entryDate) - (a.timestamp || a.entryDate));
+
+                                      if (matching.length === 0) return null;
+
+                                      return (
+                                        <div className="mt-3 pt-3 border-t border-oatmeal/10 space-y-2">
+                                          <div className="text-[11px] font-semibold text-oatmeal/70 uppercase tracking-wide">Your entries</div>
+                                          {matching.slice(0, 3).map((m, idx) => (
+                                            <div key={`${m.entryId}-${m.timestamp}-${idx}`} className="bg-blue-abyssal/30 border border-oatmeal/10 rounded-lg p-3">
+                                              <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                  <div className="text-xs text-oatmeal/70">
+                                                    {new Date(m.timestamp || m.entryDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                  </div>
+                                                  <div className="text-sm text-oatmeal/90 whitespace-pre-wrap leading-relaxed mt-1">
+                                                    {m.reflection}
+                                                  </div>
+                                                </div>
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  className="flex-shrink-0"
+                                                  onClick={() => {
+                                                    const nav = (window as any).__navigateFromRule as undefined | ((v: any) => void);
+                                                    if (nav) {
+                                                      nav({
+                                                        type: 'JOURNAL_ENTRY_EDIT',
+                                                        entryId: m.entryId,
+                                                        focusPracticeId: practice.id,
+                                                        returnTo: { type: 'RULE_OF_LIFE' },
+                                                      });
+                                                    }
+                                                  }}
+                                                >
+                                                  Edit
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {matching.length > 3 && (
+                                            <div className="text-[11px] text-oatmeal/60">
+                                              Showing 3 of {matching.length} reflections
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -926,23 +1363,100 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
                 {monthlyPractices.map(practice => {
                   const count = getEngagementCount(practice);
                   const target = practice.targetPerMonth || 1;
+                  const isExpanded = expandedMonthlyPracticeIds.includes(practice.id);
+
+                  const { monthStart, monthEnd } = getMonthBoundaries(new Date());
+                  const manualOccurrences = (rule.manualCompletions || [])
+                    .map((c, completionIndex) => ({ ...c, completionIndex }))
+                    .filter(c => c.practiceId === practice.id)
+                    .filter(c => c.date >= monthStart.getTime() && c.date <= monthEnd.getTime())
+                    .slice()
+                    .sort((a, b) => b.date - a.date);
                   
                   return (
-                    <div key={practice.id} className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="text-palladian font-semibold">{getPracticeName(practice)}</div>
-                        <div className="text-oatmeal/80 text-sm">{renderTextWithUrls(practice.description)}</div>
-                        <div className="text-oatmeal/70 text-xs mt-1">
-                          Engaged {count} of {target} {target === 1 ? 'time' : 'times'}
+                    <div key={practice.id} className="bg-blue-abyssal/20 border border-oatmeal/10 rounded-lg p-3 sm:p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-palladian font-semibold break-words">{getPracticeName(practice)}</div>
+                          <div className="text-oatmeal/80 text-sm leading-relaxed">{renderTextWithUrls(practice.description)}</div>
+                          <div className="text-oatmeal/70 text-xs mt-1">
+                            {count} / {target} {target === 1 ? 'entry' : 'entries'} this month
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2 flex-shrink-0">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleEngagePractice(practice, new Date())}
+                            disabled={count >= target}
+                            title={count >= target ? 'Monthly target reached' : 'Add an entry'}
+                          >
+                            {count >= target ? 'Complete' : 'Add Entry'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleMonthlyPracticeExpanded(practice.id)}
+                          >
+                            <Icons.Info size={16} className="mr-2" />
+                            {isExpanded ? 'Hide Entries' : 'View Entries'}
+                          </Button>
                         </div>
                       </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleEngagePractice(practice, new Date())}
-                      >
-                        Practice
-                      </Button>
+
+                      {isExpanded && (
+                        <div className="pt-3 border-t border-oatmeal/10 space-y-2">
+                          {manualOccurrences.length === 0 ? (
+                            <div className="text-sm text-oatmeal/60 italic">No entries yet this month.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {manualOccurrences.map((occ, idx) => (
+                                <div key={`${practice.id}-${occ.date}-${idx}`} className="bg-blue-fantastic/20 border border-oatmeal/10 rounded-lg p-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="text-xs text-oatmeal/70">
+                                        {new Date(occ.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                      </div>
+                                      {occ.reflection ? (
+                                        <div className="text-sm text-oatmeal/90 whitespace-pre-wrap leading-relaxed mt-1">
+                                          {occ.reflection}
+                                        </div>
+                                      ) : (
+                                        <div className="text-sm text-oatmeal/60 italic mt-1">(No reflection)</div>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-col gap-2 flex-shrink-0">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="flex-shrink-0"
+                                        onClick={() => {
+                                          setMonthlyOccurrenceEditText(occ.reflection || '');
+                                          setMonthlyOccurrenceEditModal({
+                                            isOpen: true,
+                                            practice,
+                                            completionIndex: occ.completionIndex,
+                                          });
+                                        }}
+                                      >
+                                        Edit
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="danger"
+                                        className="flex-shrink-0"
+                                        onClick={() => deleteMonthlyOccurrence(occ.completionIndex)}
+                                      >
+                                        Delete
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1142,6 +1656,13 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
                   size="sm"
                   onClick={() => {
                     if (confirm('Are you sure you want to start over? This will remove all your practices and engagement history.')) {
+                      try {
+                        // Clear persisted week UI state (expanded days/weeks) for a clean reset.
+                        const storageKey = `ruleOfLifeWeekView:${user.uid}`;
+                        window.localStorage.removeItem(storageKey);
+                      } catch {
+                        // ignore
+                      }
                       onUpdateUser({ ...user, ruleOfLife: null });
                       setRule(null);
                       setView('INTRO');
@@ -1204,19 +1725,20 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
                 }}
                 className="w-full bg-blue-fantastic border border-oatmeal/30 rounded-lg pl-4 pr-10 py-3 text-oatmeal appearance-none focus:outline-none focus:ring-2 focus:ring-flame focus:border-flame transition-all cursor-pointer"
               >
-                <option value="SCRIPTURE">Scripture</option>
-                <option value="MEDITATION">Meditation</option>
+                <option value="CUSTOM">Custom Practice</option>
                 <option value="CELEBRATION">Celebration</option>
-                <option value="PRAYER">Prayer</option>
+                <option value="COMMUNITY">Community</option>
+                <option value="CONFESSION">Confession</option>
                 <option value="FASTING">Fasting</option>
+                <option value="GENEROSITY">Generosity</option>
+                <option value="GRATITUDE">Gratitude</option>
+                <option value="MEDITATION">Meditation</option>
+                <option value="PRAYER">Prayer</option>
                 <option value="SABBATH">Sabbath</option>
+                <option value="SCRIPTURE">Scripture</option>
+                <option value="SERVICE">Service</option>
                 <option value="SILENCE_SOLITUDE">Silence & Solitude</option>
                 <option value="SIMPLICITY">Simplicity</option>
-                <option value="COMMUNITY">Community</option>
-                <option value="SERVICE">Service</option>
-                <option value="GENEROSITY">Generosity</option>
-                <option value="CONFESSION">Confession</option>
-                <option value="CUSTOM">Custom Practice</option>
               </select>
               <Icons.Down className="absolute right-3 top-[52%] -translate-y-1/2 text-flame pointer-events-none" size={20} />
             </div>
@@ -1382,13 +1904,17 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
           {practiceForm.frequency === 'WEEKLY' && (
             <div>
               <label className="block text-sm font-medium text-oatmeal mb-2">
-                Specific Days (optional)
+                Specific Days
               </label>
-              {practiceForm.scheduledDays.length > 0 && (
-                <p className="text-oatmeal/60 text-xs mb-2">
-                  {practiceForm.scheduledDays.length} of {practiceForm.target} selected
-                </p>
-              )}
+              <p
+                className={`text-xs mb-2 ${
+                  practiceForm.scheduledDays.length === practiceForm.target
+                    ? 'text-oatmeal/60'
+                    : 'text-flame'
+                }`}
+              >
+                {practiceForm.scheduledDays.length} of {practiceForm.target} selected
+              </p>
               <div className="flex flex-wrap gap-2">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => {
                   const isSelected = practiceForm.scheduledDays.includes(index);
@@ -1629,7 +2155,7 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
                               className="text-flame hover:text-flame/80 text-sm flex items-center gap-1"
                             >
                               <Icons.Edit size={14} />
-                              Edit
+                              {week.reflection ? 'Edit' : 'Add'}
                             </button>
                           )}
                         </div>
@@ -1729,6 +2255,59 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
                           );
                         })}
                       </div>
+
+                      {/* Weekly Reflection (optional, can be added) */}
+                      <div className="pt-4 mt-4 border-t border-oatmeal/20">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-semibold text-palladian">Weekly Reflection</p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const practicesSummary = rule.practices.map(practice => {
+                                const engagements = weekEngagements.filter(e => e.practiceId === practice.id);
+                                const reflections = engagements
+                                  .map(e => e.reflection)
+                                  .filter((r): r is string => !!r);
+
+                                return {
+                                  practiceId: practice.id,
+                                  practiceName: getPracticeName(practice),
+                                  engagementCount: engagements.length,
+                                  reflections,
+                                };
+                              });
+
+                              const newEntry = {
+                                weekStart: week.start.getTime(),
+                                weekEnd: week.end.getTime(),
+                                reflection: '',
+                                practicesSummary,
+                              };
+
+                              const updated = [...weeklyHistory, newEntry]
+                                .sort((a, b) => b.weekStart - a.weekStart)
+                                .slice(0, 52);
+
+                              const newIndex = updated.findIndex(h => h.weekStart === newEntry.weekStart && h.weekEnd === newEntry.weekEnd);
+
+                              setRule({
+                                ...rule,
+                                weeklyHistory: updated,
+                              });
+
+                              setEditingHistoricalWeek(newIndex);
+                              setHistoricalReflectionText('');
+                            }}
+                          >
+                            <Icons.Edit size={16} className="mr-2" />
+                            Add
+                          </Button>
+                        </div>
+                        <p className="text-oatmeal/60 italic text-sm">
+                          No reflection recorded for this week
+                        </p>
+                      </div>
                     </div>
                   );
                 })}
@@ -1742,103 +2321,114 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
   
   const renderReflection = () => {
     if (!engagementModal.practice) return null;
-    
-    return (
-      <div className="w-screen h-screen overflow-y-scroll bg-gradient-to-b from-blue-abyssal to-blue-fantastic" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, WebkitOverflowScrolling: 'touch' }}>
-        <div className="min-h-screen pb-safe">
+
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
+      <div className="fixed inset-0 z-[1000] bg-blue-abyssal">
+        {/* Mobile/Desktop Responsive Container */}
+        <div className="h-full flex flex-col max-w-4xl mx-auto">
+          
           {/* Header */}
-          <div className="px-4 pt-8 pb-4 border-b border-oatmeal/10 sticky top-0 bg-blue-abyssal/95 backdrop-blur-md z-10">
-            <div className="max-w-2xl mx-auto">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => {
-                    setView('WEEK');
-                    setEngagementModal({ isOpen: false, practice: null, date: Date.now() });
-                    setEngagementReflection('');
-                    setSelectedPrompt(null);
-                  }}
-                  className="p-2 hover:bg-blue-fantastic/50 rounded-lg transition-colors flex-shrink-0"
-                >
-                  <Icons.ArrowLeft size={20} className="text-oatmeal" />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-xl sm:text-2xl font-bold text-palladian truncate">
-                    Reflection on {getPracticeName(engagementModal.practice)}
-                  </h2>
-                  <p className="text-oatmeal/60 text-xs sm:text-sm mt-1">
-                    {new Date(engagementModal.date).toLocaleDateString('en-US', { 
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </p>
-                </div>
+          <div className="flex-shrink-0 px-4 sm:px-6 pt-8 pb-4 border-b border-oatmeal/20">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setView('WEEK');
+                  setEngagementModal({ isOpen: false, practice: null, date: Date.now() });
+                  setEngagementReflection('');
+                  setSelectedPrompt(null);
+                }}
+                className="p-2 hover:bg-blue-fantastic/30 rounded-lg transition-colors"
+                aria-label="Go back"
+              >
+                <Icons.ArrowLeft size={20} className="text-oatmeal" />
+              </button>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-xl sm:text-2xl font-bold text-palladian">
+                  Reflection on {getPracticeName(engagementModal.practice)}
+                </h2>
+                <p className="text-oatmeal/60 text-sm mt-1">
+                  {new Date(engagementModal.date).toLocaleDateString('en-US', { 
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Content */}
-          <div className="px-4 py-6">
-            <div className="max-w-2xl mx-auto space-y-6">
-              <div className="bg-blue-fantastic/50 border border-oatmeal/10 rounded-xl p-4 sm:p-6">
-                <p className="text-oatmeal leading-relaxed text-sm sm:text-base">
+          {/* Scrollable Content Area */}
+          <div 
+            className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-6" 
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            <div className="space-y-6 pb-6">
+              
+              {/* Info Card */}
+              <div className="bg-blue-fantastic/50 border border-oatmeal/20 rounded-lg p-4">
+                <p className="text-oatmeal text-sm leading-relaxed">
                   Would you like to capture anything about your experience?
                 </p>
               </div>
               
+              {/* Prompt Card */}
               {selectedPrompt && (
-                <div className="bg-flame/10 border border-flame/30 rounded-xl p-4 sm:p-6">
-                  <p className="text-palladian font-medium mb-2 text-sm sm:text-base">Reflection Prompt:</p>
-                  <p className="text-oatmeal/90 leading-relaxed italic text-sm sm:text-base">
+                <div className="bg-flame/10 border border-flame/30 rounded-lg p-4">
+                  <p className="text-palladian font-semibold mb-2 text-sm">Reflection Prompt</p>
+                  <p className="text-oatmeal/90 text-sm leading-relaxed italic">
                     {selectedPrompt}
                   </p>
                 </div>
               )}
               
+              {/* Reflection Input */}
               <div>
-                <label className="block text-sm font-medium text-palladian mb-2">
+                <label htmlFor="reflection-input" className="block text-sm font-medium text-palladian mb-2">
                   Your Reflection (Optional)
                 </label>
-                <Textarea
+                <textarea
+                  id="reflection-input"
                   value={engagementReflection}
                   onChange={(e) => setEngagementReflection(e.target.value)}
                   placeholder="Add a brief reflection about your experience..."
-                  rows={8}
-                  className="text-base w-full"
+                  rows={6}
+                  className="w-full px-4 py-3 bg-blue-abyssal border-2 border-oatmeal/20 rounded-lg text-palladian placeholder-oatmeal/40 focus:outline-none focus:border-flame focus:ring-1 focus:ring-flame transition-colors resize-none"
+                  style={{ fontSize: '16px', minHeight: '120px' }}
                 />
-              </div>
-              
-              {/* Extra space to ensure buttons are visible */}
-              <div className="h-6"></div>
-              
-              {/* Buttons inside the scrollable area */}
-              <div className="pb-6">
-                <div className="flex gap-3">
-                  <Button 
-                    onClick={confirmEngagement} 
-                    className="flex-1"
-                  >
-                    <Icons.Check size={18} className="mr-2" />
-                    Save Reflection
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setView('WEEK');
-                      setEngagementModal({ isOpen: false, practice: null, date: Date.now() });
-                      setEngagementReflection('');
-                      setSelectedPrompt(null);
-                    }}
-                    className="flex-shrink-0"
-                  >
-                    Cancel
-                  </Button>
-                </div>
               </div>
             </div>
           </div>
+
+          {/* Fixed Bottom Buttons */}
+          <div className="flex-shrink-0 border-t border-oatmeal/20 bg-blue-abyssal px-4 sm:px-6 py-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+            <div className="flex gap-3">
+              <Button 
+                onClick={confirmEngagement} 
+                className="flex-1 sm:flex-none sm:min-w-[140px] h-12"
+              >
+                <Icons.Check size={18} className="mr-2" />
+                Save
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setView('WEEK');
+                  setEngagementModal({ isOpen: false, practice: null, date: Date.now() });
+                  setEngagementReflection('');
+                  setSelectedPrompt(null);
+                }}
+                className="flex-1 sm:flex-none sm:min-w-[140px] h-12"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+          
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
   
@@ -1918,7 +2508,7 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
       {/* Journal Prompt Modal */}
       <Modal
         isOpen={journalPromptModal.isOpen}
-        onClose={() => setJournalPromptModal({ isOpen: false, practice: null, reflection: '', date: Date.now() })}
+        onClose={() => setJournalPromptModal({ isOpen: false, practice: null, reflection: '', date: Date.now(), alsoAddToGratitudeList: false })}
         title="Add to Daily Journal?"
       >
         <div className="space-y-4">
@@ -1943,6 +2533,34 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
               {journalPromptModal.reflection}
             </p>
           </div>
+
+          {(() => {
+            const allowGratitudeSync =
+              journalPromptModal.practice?.category === 'GRATITUDE' ||
+              journalPromptModal.practice?.linkedAppPractice === 'GRATITUDE_LIST';
+
+            if (!allowGratitudeSync) return null;
+
+            return (
+              <label className="flex items-start gap-3 bg-blue-fantastic/30 rounded-lg p-4 border border-oatmeal/10 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={journalPromptModal.alsoAddToGratitudeList}
+                  onChange={(e) => setJournalPromptModal(prev => ({ ...prev, alsoAddToGratitudeList: e.target.checked }))}
+                  className="mt-1 h-4 w-4"
+                />
+                <div className="min-w-0">
+                  <div className="text-palladian text-sm font-semibold flex items-center gap-2">
+                    <Icons.Leaf size={16} className="text-emerald-700" />
+                    Also add to Gratitude List
+                  </div>
+                  <div className="text-oatmeal/70 text-xs mt-1">
+                    This will show the Leaf icon in your journal and sync to your Gratitude List.
+                  </div>
+                </div>
+              </label>
+            );
+          })()}
           
           <div className="flex gap-2">
             <Button onClick={savePracticeReflectionToJournal} className="flex-1">
@@ -1950,7 +2568,7 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
             </Button>
             <Button
               variant="secondary"
-              onClick={() => setJournalPromptModal({ isOpen: false, practice: null, reflection: '', date: Date.now() })}
+              onClick={() => setJournalPromptModal({ isOpen: false, practice: null, reflection: '', date: Date.now(), alsoAddToGratitudeList: false })}
             >
               No Thanks
             </Button>
@@ -2025,6 +2643,46 @@ export const RuleOfLife: React.FC<RuleOfLifeProps> = ({
                 </Button>
               </>
             )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Monthly Occurrence Modal */}
+      <Modal
+        isOpen={monthlyOccurrenceEditModal.isOpen}
+        onClose={() => {
+          setMonthlyOccurrenceEditModal({ isOpen: false, practice: null, completionIndex: null });
+          setMonthlyOccurrenceEditText('');
+        }}
+        title={monthlyOccurrenceEditModal.practice ? `Edit ${getPracticeName(monthlyOccurrenceEditModal.practice)}` : 'Edit Entry'}
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-fantastic/30 rounded-lg p-4">
+            <p className="text-oatmeal text-sm leading-relaxed">
+              Update your reflection for this monthly entry.
+            </p>
+          </div>
+
+          <Textarea
+            value={monthlyOccurrenceEditText}
+            onChange={(e) => setMonthlyOccurrenceEditText(e.target.value)}
+            placeholder="Write your reflection..."
+            rows={6}
+          />
+
+          <div className="flex gap-2">
+            <Button onClick={saveMonthlyOccurrenceEdit} className="flex-1">
+              Save
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setMonthlyOccurrenceEditModal({ isOpen: false, practice: null, completionIndex: null });
+                setMonthlyOccurrenceEditText('');
+              }}
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       </Modal>
