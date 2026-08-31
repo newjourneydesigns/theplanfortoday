@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support Ashlyn's Journey to Narnia</title>
+  <meta name="description" content="A ballet of courage, wonder, and grace. Pick a square and help bring this story to life!">
+  <meta property="og:title" content="Support Ashlyn's Journey to Narnia">
+  <meta property="og:description" content="A ballet of courage, wonder, and grace. Pick a square and help bring this story to life!">
+  <meta property="og:image" content="https://ashlyns-journey-to-narnia.netlify.app/assets/og-poster.jpg">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#f7f1ed">
+  <link rel="icon" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Dancing+Script:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <div class="poster">
+      <header class="board-header">
+        <img class="art art-left" src="assets/pointe-header.png" alt="Watercolor pink pointe shoes tied with a bow">
+        <div class="title-stack">
+          <h2 class="support">Support Ashlyn&rsquo;s Journey</h2>
+          <div class="to-rule"><span class="rule"></span><span class="to">to</span><span class="rule"></span></div>
+          <h1 class="narnia"><span class="spark">&#10038;</span><span class="narnia-word">Narnia</span><span class="spark">&#10038;</span></h1>
+          <p class="tagline">A ballet of courage, wonder, and grace.</p>
+          <p class="script pick">Pick an amount below and help bring this story to life! <span class="heart">&hearts;</span></p>
+        </div>
+        <img class="art art-right" src="assets/lion-lamppost.png" alt="Watercolor lion beside a glowing lamppost in a snowy forest">
+      </header>
+
+      <section class="progress" id="progress-meter" role="meter" aria-label="Amount raised" aria-valuemin="0" aria-valuemax="750" aria-valuenow="0">
+        <p class="progress-text"><span id="raised">$0</span> of $750 raised</p>
+        <div class="bar"><div id="bar-fill"></div></div>
+      </section>
+
+      <main id="board">
+        <noscript><p class="noscript">This board needs JavaScript to show which squares are still available.</p></noscript>
+      </main>
+
+      <footer class="board-footer">
+        <p class="every"><span class="spark">&#10038;</span> EVERY GIFT HELPS. <span class="script thanks">Thank you for cheering Ashlyn on!</span> <span class="heart">&hearts;</span></p>
+        <p class="venmo">Venmo: @erinochenski
+          <button id="owner-key" type="button" aria-label="Owner sign-in" title="Owner sign-in">&#9919;</button>
+        </p>
+      </footer>
+    </div>
+  </div>
+
+  <div id="owner-bar" hidden>
+    <span class="bar-label">Owner mode</span>
+    <span class="bar-hint">tap squares to mark / un-mark</span>
+    <button id="btn-reset" class="bar-btn" type="button">Reset board</button>
+    <button id="btn-exit" class="bar-btn" type="button">Exit</button>
+  </div>
+
+  <div id="modal-overlay" hidden>
+    <div id="modal-card" class="modal-card" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <div id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

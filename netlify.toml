@@ -1,0 +1,4 @@
+# Deploys only the Ashlyn's Journey fundraising board (a static site, no build).
+[build]
+  publish = "ashlyns-journey"
+  command = ""
