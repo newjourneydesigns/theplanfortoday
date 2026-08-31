@@ -60,6 +60,12 @@ declare
   cfg public.narnia_board_config%rowtype;
   ok  boolean;
 begin
+  -- extensions.crypt is STRICT: crypt(NULL, hash) is NULL, so without this a
+  -- NULL PIN would make `ok` NULL, `not ok` NULL, and the owner-guard IF fall
+  -- through. Reject NULL up front and coalesce the result to be safe.
+  if p_pin is null then
+    return false;
+  end if;
   select * into cfg from public.narnia_board_config where id for update;
   if not found then
     raise exception 'Board is not configured yet.';
@@ -79,7 +85,7 @@ begin
                                then now() + interval '15 minutes' end
      where id;
   end if;
-  return ok;
+  return coalesce(ok, false);
 end;
 $$;
 revoke execute on function public.narnia_check_pin(text) from public, anon, authenticated;
@@ -113,7 +119,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if not public.narnia_check_pin(p_pin) then
+  if p_pin is null or not public.narnia_check_pin(p_pin) then
     raise exception 'Incorrect PIN.';
   end if;
   return query
@@ -135,7 +141,7 @@ set search_path = ''
 as $$
 declare n integer;
 begin
-  if not public.narnia_check_pin(p_pin) then
+  if p_pin is null or not public.narnia_check_pin(p_pin) then
     raise exception 'Incorrect PIN.';
   end if;
   update public.narnia_board_tiles

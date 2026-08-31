@@ -24,6 +24,7 @@ const TIERS = [
 const state = {
   tiles: new Map(),      // id -> {id, tier, amount, claimed}
   optimistic: new Map(), // id -> expiry ms; keeps a just-claimed tile marked while the RPC lands
+  pending: new Map(),    // id -> amount; claims whose RPC we couldn't confirm (retried on return)
   ownerPin: null,
 };
 
@@ -182,9 +183,26 @@ function openClaimModal(tile) {
 }
 
 function confirmClaim(tile) {
+  // Re-check the live map: a poll may have marked this square claimed while the
+  // donor sat on the modal. `tile` is the object captured at tap time and never
+  // updates, so read the current row before committing to a payment.
+  const live = state.tiles.get(tile.id);
+  if (live && live.claimed) {
+    closeModal();
+    state.optimistic.delete(tile.id);
+    applyState();
+    showToast("This one was just claimed — pick another! Nothing was sent yet.");
+    return;
+  }
+
   // Optimistic: mark it locally right away.
   tile.claimed = true;
+  if (live) live.claimed = true;
   state.optimistic.set(tile.id, Date.now() + CONFIG.optimisticMs);
+  // Remember the claim before we hand off to Venmo — if the POST is cut short by
+  // the app switch, we retry it when the donor returns (see retryPending).
+  state.pending.set(tile.id, tile.amount);
+  savePending();
   applyState();
   closeModal();
 
@@ -196,8 +214,10 @@ function confirmClaim(tile) {
     headers: headers(),
     body: JSON.stringify({ p_tile_id: tile.id }),
   })
-    .then((res) => (res.ok ? res.json() : null))
+    .then((res) => (res.ok ? res.json() : Promise.reject(new Error('http ' + res.status))))
     .then((rows) => {
+      state.pending.delete(tile.id);
+      savePending();
       if (Array.isArray(rows) && rows.length === 0) {
         // Someone beat us to it.
         state.optimistic.delete(tile.id);
@@ -208,7 +228,15 @@ function confirmClaim(tile) {
         refresh();
       }
     })
-    .catch(() => { /* refetch on return will reconcile */ });
+    .catch(() => {
+      // Couldn't confirm the claim landed. Keep the pending record (retried on
+      // return) and, if we're still on the page, tell the donor rather than
+      // letting the square silently reopen under them.
+      showToast(
+        "We couldn't confirm that square just now — if you paid, don't worry, " +
+          'the owner can mark it. You can also tap it again when you get back.'
+      );
+    });
 
   goToVenmo(tile.amount);
 }
@@ -222,14 +250,65 @@ function goToVenmo(amount) {
     'https://venmo.com/u/' + CONFIG.venmoUser +
     '?txn=pay&amount=' + amount + '&note=' + note;
   const isTouch = window.matchMedia('(pointer: coarse)').matches;
-  if (isTouch) {
-    location.href = appUrl;
-    setTimeout(() => {
-      if (!document.hidden) location.href = webUrl;
-    }, 1400);
-  } else {
+  if (!isTouch) {
     window.open(webUrl, '_blank', 'noopener');
+    return;
   }
+
+  // Try the app's custom scheme, then fall back to the web pay page ONLY if the
+  // handoff didn't happen. The fallback timer is cancelled the moment the page
+  // is hidden (app opened, or the "Open in Venmo?" sheet took over), so it can't
+  // yank a donor off the board mid-sheet or after they return from paying.
+  const start = Date.now();
+  let timer = null;
+  const cleanup = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    document.removeEventListener('visibilitychange', onHide);
+    window.removeEventListener('pagehide', onHide);
+  };
+  const onHide = () => { if (document.hidden) cleanup(); };
+  document.addEventListener('visibilitychange', onHide);
+  window.addEventListener('pagehide', onHide);
+  timer = setTimeout(() => {
+    timer = null;
+    cleanup();
+    // Only if we're still on a fresh, visible board (app not installed). If the
+    // timer was suspended while the donor was in Venmo, the clock jumped well
+    // past our window — don't navigate them away on return.
+    if (!document.hidden && Date.now() - start < 2600) {
+      location.href = webUrl;
+    }
+  }, 1400);
+  location.href = appUrl;
+}
+
+/* Pending claims — survive the Venmo app switch so a dropped POST can be retried. */
+
+function savePending() {
+  try {
+    localStorage.setItem('narniaPending', JSON.stringify([...state.pending]));
+  } catch (_) {}
+}
+
+function loadPending() {
+  try {
+    const raw = localStorage.getItem('narniaPending');
+    if (raw) JSON.parse(raw).forEach(([id, amt]) => state.pending.set(Number(id), amt));
+  } catch (_) {}
+}
+
+async function retryPending() {
+  if (!state.pending.size) return;
+  for (const id of [...state.pending.keys()]) {
+    try {
+      await rpc('narnia_claim_tile', { p_tile_id: id });
+      // Success or [] (already claimed, possibly by our own earlier call) both
+      // mean there's nothing left to retry for this square.
+      state.pending.delete(id);
+    } catch (_) { /* still unreachable — keep it for the next return */ }
+  }
+  savePending();
+  refresh();
 }
 
 /* ---------- Owner mode ---------- */
@@ -406,11 +485,13 @@ function init() {
   if (storedPin) enterOwnerMode(storedPin);
   else if (new URLSearchParams(location.search).get('owner')) openPinModal();
 
-  refresh();
+  loadPending();
+  refresh().then(retryPending);
   setInterval(() => { if (!document.hidden) refresh(); }, CONFIG.pollMs);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-  window.addEventListener('focus', refresh);
-  window.addEventListener('pageshow', refresh);
+  const onReturn = () => { if (!document.hidden) refresh().then(retryPending); };
+  document.addEventListener('visibilitychange', onReturn);
+  window.addEventListener('focus', onReturn);
+  window.addEventListener('pageshow', onReturn);
 }
 
 init();
