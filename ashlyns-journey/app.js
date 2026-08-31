@@ -1,6 +1,5 @@
-/* Ashlyn's Journey to Narnia — live fundraising board.
-   Plain JS + Supabase REST (tiles table + security-definer RPCs).
-   No frameworks, no build step. */
+/* Ashlyn's Journey to Narnia — live fundraising board + encouragement wall.
+   Plain JS + Supabase REST (tables + security-definer RPCs). No build step. */
 
 const CONFIG = {
   supabaseUrl: 'https://ldaufsxafavbpnifryic.supabase.co',
@@ -21,11 +20,17 @@ const TIERS = [
   { key: 'wardrobe',  amount: 25, name: 'Wardrobes',    icon: 'assets/icon-wardrobe.png' },
 ];
 
+// Obvious-profanity guard, mirrored server-side. Small on purpose; the owner's
+// hide/delete tools are the real backstop.
+const BAD_WORDS = /\b(fuck|shit|bitch|cunt|asshole|dick|piss|bastard|slut|whore|nigger|nigga|faggot|fag|retard|cum|pussy|cock|twat|wank|dildo|douche)\b/i;
+
 const state = {
   tiles: new Map(),      // id -> {id, tier, amount, claimed}
   optimistic: new Map(), // id -> expiry ms; keeps a just-claimed tile marked while the RPC lands
-  pending: new Map(),    // id -> amount; claims whose RPC we couldn't confirm (retried on return)
+  pending: new Set(),    // ids whose claim RPC we couldn't confirm (retried on return)
+  claims: new Map(),     // id -> private token; squares THIS device claimed (for self-undo)
   ownerPin: null,
+  soldOut: false,
 };
 
 /* ---------- Supabase REST ---------- */
@@ -54,13 +59,23 @@ async function api(path, options = {}) {
 
 const fetchTiles = () =>
   api('/rest/v1/narnia_board_tiles?select=id,tier,amount,claimed&order=id');
+const fetchMessages = () =>
+  api('/rest/v1/narnia_board_messages?select=id,name,body,created_at&order=created_at.desc&limit=200');
 const rpc = (fn, args) =>
   api('/rest/v1/rpc/' + fn, { method: 'POST', body: JSON.stringify(args) });
+
+function newToken() {
+  try { return crypto.randomUUID(); }
+  catch (_) { return 'tok-' + Date.now() + '-' + Math.random().toString(36).slice(2); }
+}
 
 /* ---------- DOM helpers ---------- */
 
 const $ = (sel) => document.querySelector(sel);
 
+// NOTE: the optional `html` arg is inserted as innerHTML — only ever pass
+// trusted, code-authored strings. Untrusted content (wall notes) is set with
+// textContent instead (see messageCard).
 function el(tag, className, html) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -103,20 +118,26 @@ function buildBoard() {
 
 function applyState() {
   let raised = 0;
+  let claimedCount = 0;
   const counts = new Map(TIERS.map((t) => [t.key, 0]));
   state.tiles.forEach((t) => {
     if (t.claimed) {
       raised += t.amount;
+      claimedCount += 1;
       counts.set(t.tier, (counts.get(t.tier) || 0) + 1);
     }
     const btn = document.querySelector('.tile[data-id="' + t.id + '"]');
     if (!btn) return;
+    const mine = t.claimed && state.claims.has(t.id);
     btn.classList.toggle('claimed', t.claimed);
+    btn.classList.toggle('mine', mine);
     btn.setAttribute(
       'aria-label',
-      t.claimed
-        ? '$' + t.amount + ' square, already claimed'
-        : 'Claim a $' + t.amount + ' square'
+      mine
+        ? 'You claimed this $' + t.amount + ' square — tap to undo'
+        : t.claimed
+          ? '$' + t.amount + ' square, already claimed'
+          : 'Claim a $' + t.amount + ' square'
     );
   });
   document.querySelectorAll('.tier').forEach((section, i) => {
@@ -128,6 +149,14 @@ function applyState() {
   $('#bar-fill').style.width = Math.min(100, (raised / CONFIG.goal) * 100) + '%';
   const meter = $('#progress-meter');
   if (meter) meter.setAttribute('aria-valuenow', raised);
+
+  const soldOut = state.tiles.size > 0 && claimedCount === state.tiles.size;
+  state.soldOut = soldOut;
+  document.body.classList.toggle('sold-out', soldOut);
+  const banner = $('#soldout-banner');
+  if (banner) banner.hidden = !soldOut;
+  const goalNote = $('#goal-reached');
+  if (goalNote) goalNote.hidden = !soldOut;
 }
 
 async function refresh() {
@@ -156,7 +185,9 @@ function onTileTap(id) {
   const tile = state.tiles.get(id);
   if (!tile) return;
   if (state.ownerPin) return ownerToggle(tile);
+  if (tile.claimed && state.claims.has(id)) return openUndoModal(tile);
   if (tile.claimed) {
+    if (state.soldOut) return showToast('We did it! Every square is claimed \u{1F49B}');
     return showToast("This one's claimed — thank you! Pick another.");
   }
   openClaimModal(tile);
@@ -184,16 +215,21 @@ function openClaimModal(tile) {
 
 function confirmClaim(tile) {
   // Re-check the live map: a poll may have marked this square claimed while the
-  // donor sat on the modal. `tile` is the object captured at tap time and never
-  // updates, so read the current row before committing to a payment.
+  // donor sat on the modal. `tile` is captured at tap time and never updates,
+  // so read the current row before committing to a payment.
   const live = state.tiles.get(tile.id);
   if (live && live.claimed) {
     closeModal();
     state.optimistic.delete(tile.id);
     applyState();
-    showToast("This one was just claimed — pick another! Nothing was sent yet.");
+    showToast('This one was just claimed — pick another! Nothing was sent yet.');
     return;
   }
+
+  // A private token so THIS device (and only this device) can undo the claim.
+  const token = newToken();
+  state.claims.set(tile.id, token);
+  saveClaims();
 
   // Optimistic: mark it locally right away.
   tile.claimed = true;
@@ -201,7 +237,7 @@ function confirmClaim(tile) {
   state.optimistic.set(tile.id, Date.now() + CONFIG.optimisticMs);
   // Remember the claim before we hand off to Venmo — if the POST is cut short by
   // the app switch, we retry it when the donor returns (see retryPending).
-  state.pending.set(tile.id, tile.amount);
+  state.pending.add(tile.id);
   savePending();
   applyState();
   closeModal();
@@ -212,15 +248,17 @@ function confirmClaim(tile) {
     method: 'POST',
     keepalive: true,
     headers: headers(),
-    body: JSON.stringify({ p_tile_id: tile.id }),
+    body: JSON.stringify({ p_tile_id: tile.id, p_token: token }),
   })
     .then((res) => (res.ok ? res.json() : Promise.reject(new Error('http ' + res.status))))
     .then((rows) => {
       state.pending.delete(tile.id);
       savePending();
       if (Array.isArray(rows) && rows.length === 0) {
-        // Someone beat us to it.
+        // Someone beat us to it — the claim (and our token) never stuck.
         state.optimistic.delete(tile.id);
+        state.claims.delete(tile.id);
+        saveClaims();
         showToast(
           'That square was just claimed by someone else — pick another! ' +
             'If you already paid, the owner can sort it out.'
@@ -239,6 +277,50 @@ function confirmClaim(tile) {
     });
 
   goToVenmo(tile.amount);
+}
+
+function openUndoModal(tile) {
+  const tier = TIERS.find((t) => t.key === tile.tier) || TIERS[0];
+  showModal({
+    icon: tier.icon,
+    title: 'Undo your $' + tile.amount + ' square?',
+    body:
+      'You claimed this one. Claim it by accident? You can open it back up for ' +
+      'someone else. (This only affects squares you claimed on this device.)',
+    actions: [
+      {
+        label: 'Undo my claim',
+        className: 'btn btn-primary',
+        onClick: () => { closeModal(); releaseOwnClaim(tile); },
+      },
+      { label: 'Keep it', className: 'btn', onClick: closeModal },
+    ],
+  });
+}
+
+async function releaseOwnClaim(tile) {
+  const token = state.claims.get(tile.id);
+  if (!token) return;
+  try {
+    const rows = await rpc('narnia_release_tile', { p_tile_id: tile.id, p_token: token });
+    state.claims.delete(tile.id);
+    state.pending.delete(tile.id);
+    state.optimistic.delete(tile.id);
+    saveClaims();
+    savePending();
+    if (Array.isArray(rows) && rows[0]) {
+      state.tiles.set(rows[0].id, {
+        id: rows[0].id, tier: rows[0].tier, amount: rows[0].amount, claimed: rows[0].claimed,
+      });
+      showToast('No worries — that square is open again.');
+    } else {
+      showToast('That claim was already cleared.');
+    }
+    applyState();
+    refresh();
+  } catch (err) {
+    showToast(err.message);
+  }
 }
 
 function goToVenmo(amount) {
@@ -282,26 +364,32 @@ function goToVenmo(amount) {
   location.href = appUrl;
 }
 
-/* Pending claims — survive the Venmo app switch so a dropped POST can be retried. */
+/* Pending claims + claim tokens — persisted so they survive the Venmo app switch. */
 
 function savePending() {
-  try {
-    localStorage.setItem('narniaPending', JSON.stringify([...state.pending]));
-  } catch (_) {}
+  try { localStorage.setItem('narniaPending', JSON.stringify([...state.pending])); } catch (_) {}
 }
-
 function loadPending() {
   try {
     const raw = localStorage.getItem('narniaPending');
-    if (raw) JSON.parse(raw).forEach(([id, amt]) => state.pending.set(Number(id), amt));
+    if (raw) JSON.parse(raw).forEach((id) => state.pending.add(Number(id)));
+  } catch (_) {}
+}
+function saveClaims() {
+  try { localStorage.setItem('narniaClaims', JSON.stringify([...state.claims])); } catch (_) {}
+}
+function loadClaims() {
+  try {
+    const raw = localStorage.getItem('narniaClaims');
+    if (raw) JSON.parse(raw).forEach(([id, tok]) => state.claims.set(Number(id), tok));
   } catch (_) {}
 }
 
 async function retryPending() {
   if (!state.pending.size) return;
-  for (const id of [...state.pending.keys()]) {
+  for (const id of [...state.pending]) {
     try {
-      await rpc('narnia_claim_tile', { p_tile_id: id });
+      await rpc('narnia_claim_tile', { p_tile_id: id, p_token: state.claims.get(id) || null });
       // Success or [] (already claimed, possibly by our own earlier call) both
       // mean there's nothing left to retry for this square.
       state.pending.delete(id);
@@ -353,6 +441,7 @@ function enterOwnerMode(pin) {
   document.body.classList.add('owner-mode');
   $('#owner-bar').hidden = false;
   showToast('Owner mode on — tap squares to mark or un-mark them.');
+  refreshMessages(); // reload with moderation tools + any hidden notes
 }
 
 function exitOwnerMode() {
@@ -360,6 +449,7 @@ function exitOwnerMode() {
   try { sessionStorage.removeItem('narniaPin'); } catch (_) {}
   document.body.classList.remove('owner-mode');
   $('#owner-bar').hidden = true;
+  refreshMessages();
 }
 
 function ownerToggle(tile) {
@@ -428,6 +518,125 @@ function openResetModal() {
   });
 }
 
+/* ---------- Encouragement wall ---------- */
+
+async function refreshMessages() {
+  let rows;
+  try {
+    rows = state.ownerPin
+      ? await rpc('narnia_list_messages_admin', { p_pin: state.ownerPin })
+      : await fetchMessages();
+  } catch (_) {
+    return; // transient — next poll retries
+  }
+  renderMessages(rows || []);
+}
+
+function renderMessages(rows) {
+  const list = $('#wall-list');
+  if (!list) return;
+  list.textContent = '';
+  if (!rows.length) {
+    const empty = el('p', 'wall-empty');
+    empty.textContent = 'Be the first to cheer Ashlyn on!';
+    list.append(empty);
+    return;
+  }
+  rows.forEach((m) => list.append(messageCard(m)));
+}
+
+function messageCard(m) {
+  const card = el('div', 'note' + (m.hidden ? ' note-hidden' : ''));
+  const body = el('p', 'note-body');
+  body.textContent = m.body;                             // untrusted -> textContent
+  const who = el('p', 'note-name');
+  who.textContent = '— ' + (m.name && m.name.trim() ? m.name.trim() : 'A friend');
+  card.append(body, who);
+  if (state.ownerPin) {
+    const tools = el('div', 'note-tools');
+    tools.append(
+      noteBtn(m.hidden ? 'Unhide' : 'Hide', () => moderateMessage(m.id, m.hidden ? 'unhide' : 'hide')),
+      noteBtn('Delete', () => moderateMessage(m.id, 'delete'))
+    );
+    card.append(tools);
+  }
+  return card;
+}
+
+function noteBtn(label, onClick) {
+  const b = el('button', 'note-btn', label); // label is a trusted literal
+  b.type = 'button';
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+async function moderateMessage(id, action) {
+  if (action === 'delete') {
+    showModal({
+      title: 'Delete this note?',
+      body: 'This removes it for good.',
+      actions: [
+        {
+          label: 'Delete',
+          className: 'btn btn-primary',
+          onClick: async () => {
+            closeModal();
+            try {
+              await rpc('narnia_delete_message', { p_id: id, p_pin: state.ownerPin });
+              showToast('Note deleted.');
+              refreshMessages();
+            } catch (err) { showToast(err.message); }
+          },
+        },
+        { label: 'Cancel', className: 'btn', onClick: closeModal },
+      ],
+    });
+    return;
+  }
+  try {
+    await rpc('narnia_set_message_hidden', {
+      p_id: id, p_hidden: action === 'hide', p_pin: state.ownerPin,
+    });
+    showToast(action === 'hide' ? 'Note hidden.' : 'Note restored.');
+    refreshMessages();
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+function initWall() {
+  const form = $('#wall-form');
+  if (!form) return;
+  const bodyEl = $('#wall-body');
+  const countEl = $('#wall-count');
+  const updateCount = () => { countEl.textContent = bodyEl.value.length + ' / 280'; };
+  bodyEl.addEventListener('input', updateCount);
+  updateCount();
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#wall-name').value.trim();
+    const body = bodyEl.value.trim();
+    if (!body) return showToast('Please write a short note before sending.');
+    if (BAD_WORDS.test(body) || (name && BAD_WORDS.test(name))) {
+      return showToast("Let's keep it kind for Ashlyn. Please reword your note.");
+    }
+    const btn = $('#wall-send');
+    btn.disabled = true;
+    try {
+      await rpc('narnia_post_message', { p_name: name || null, p_body: body });
+      form.reset();
+      updateCount();
+      showToast('Thank you — your note is on the wall! \u{1F49B}');
+      refreshMessages();
+    } catch (err) {
+      showToast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 /* ---------- Modal + toast ---------- */
 
 function showModal({ icon, title, body, actions, onOpen }) {
@@ -466,6 +675,7 @@ function showToast(message, ms = 5000) {
 
 function init() {
   buildBoard();
+  initWall();
 
   $('#owner-key').addEventListener('click', () => {
     if (state.ownerPin) return; // already in owner mode
@@ -485,10 +695,21 @@ function init() {
   if (storedPin) enterOwnerMode(storedPin);
   else if (new URLSearchParams(location.search).get('owner')) openPinModal();
 
+  loadClaims();
   loadPending();
   refresh().then(retryPending);
-  setInterval(() => { if (!document.hidden) refresh(); }, CONFIG.pollMs);
-  const onReturn = () => { if (!document.hidden) refresh().then(retryPending); };
+  refreshMessages();
+
+  setInterval(() => {
+    if (document.hidden) return;
+    refresh();
+    refreshMessages();
+  }, CONFIG.pollMs);
+  const onReturn = () => {
+    if (document.hidden) return;
+    refresh().then(retryPending);
+    refreshMessages();
+  };
   document.addEventListener('visibilitychange', onReturn);
   window.addEventListener('focus', onReturn);
   window.addEventListener('pageshow', onReturn);

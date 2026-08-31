@@ -23,8 +23,27 @@ project **NJD-PORTAL** (tables/functions prefixed `narnia_`); hosting is Netlify
   ever flips an *unclaimed* square, so two donors can't take the same one) →
   Venmo opens pre-filled. If someone beat them to the square, they get a toast
   asking them to pick another.
+- **Undo (donor side):** each claim saves a private token in that browser, so the
+  person who claimed a square can tap it again and "Undo my claim" if it was a
+  mistake — but only from the same device. The token column is not readable
+  through the public API, so nobody can undo anyone else's square.
+- **Sold-out state:** when all 50 squares are claimed the board shows a "Fully
+  funded!" banner, a 100% bar, and taps just give a celebratory message.
 - `assets/` artwork is cropped from the original poster scan
   (`assets/poster-source.png`) by `tools/make_assets.py` (needs Pillow).
+
+## Encouragement wall
+
+Below the board, anyone can leave Ashlyn a short note (optional first name; blank
+shows "A friend"). Notes appear instantly. A small built-in profanity filter
+blocks the most obvious bad words — it is intentionally basic, so **your owner
+tools are the real backstop**:
+
+- In owner mode, every note gets **Hide** (removes it from public view but keeps
+  it, so you can Unhide later) and **Delete** (removes it for good). Owner mode
+  also shows hidden notes, dimmed, so you can restore them.
+- Notes are capped at 280 characters; no emails or last names are collected.
+- Rendering uses `textContent`, so a note can never inject markup or scripts.
 
 ## Owner mode (for un-marking squares if a payment never arrives)
 

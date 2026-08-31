@@ -32,8 +32,14 @@
         <img class="art art-right" src="assets/lion-lamppost.png" alt="Watercolor lion beside a glowing lamppost in a snowy forest">
       </header>
 
+      <div id="soldout-banner" class="soldout" role="status" hidden>
+        <span class="soldout-spark">&#10038;</span>
+        <p class="soldout-text">Fully funded! Every square is claimed &mdash;<br>thank you for bringing Ashlyn&rsquo;s Narnia to life! <span class="heart">&hearts;</span></p>
+        <span class="soldout-spark">&#10038;</span>
+      </div>
+
       <section class="progress" id="progress-meter" role="meter" aria-label="Amount raised" aria-valuemin="0" aria-valuemax="750" aria-valuenow="0">
-        <p class="progress-text"><span id="raised">$0</span> of $750 raised</p>
+        <p class="progress-text"><span id="raised">$0</span> of $750 raised<span id="goal-reached" hidden> &mdash; goal reached!</span></p>
         <div class="bar"><div id="bar-fill"></div></div>
       </section>
 
@@ -48,6 +54,22 @@
         </p>
       </footer>
     </div>
+
+    <section class="poster wall" aria-labelledby="wall-title">
+      <h2 id="wall-title" class="wall-title">Words of Encouragement for Ashlyn <span class="heart">&hearts;</span></h2>
+      <p class="script wall-sub">Leave a little cheer &mdash; she&rsquo;ll read every one.</p>
+
+      <form id="wall-form" class="wall-form" autocomplete="off">
+        <input id="wall-name" type="text" maxlength="40" placeholder="Your name (optional)" aria-label="Your name (optional)">
+        <textarea id="wall-body" maxlength="280" rows="3" required placeholder="Write a word of encouragement for Ashlyn&hellip;" aria-label="Your note"></textarea>
+        <div class="wall-form-row">
+          <span id="wall-count" class="wall-count" aria-hidden="true">0 / 280</span>
+          <button id="wall-send" type="submit" class="btn btn-primary">Send encouragement</button>
+        </div>
+      </form>
+
+      <div id="wall-list" class="wall-list" aria-live="polite"></div>
+    </section>
   </div>
 
   <div id="owner-bar" hidden>
